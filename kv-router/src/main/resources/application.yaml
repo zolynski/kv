@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: kv-router
+  threads:
+    # Using virtual threads since all the router does is waiting for shards to respond.
+    virtual:
+      enabled: true
+
+  # Must stay below the Kubernetes terminationGracePeriodSeconds (20s in k8s/).
+  lifecycle:
+    timeout-per-shutdown-phase: 15s
+
+server:
+  port: 8080
+  shutdown: graceful
+
+kv:
+  router:
+    shard-count: 1
+    # {ordinal} is substituted per shard. One property spans every environment:
+    #   Kubernetes      http://kv-shard-{ordinal}.kv-shards:8080
+    #   docker-compose  http://kv-shard-{ordinal}:8080
+    #   laptop          http://localhost:80{ordinal}1
+    shard-url-template: "http://localhost:8081"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: always
+
+logging:
+  level:
+    de.zolynski.kv: INFO

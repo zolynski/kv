@@ -1,0 +1,79 @@
+# A three-shard cluster in containers.
+name: kv
+
+x-shard: &shard
+  image: ${KV_SHARD_IMAGE:-kv-shard:1.0.0}
+  restart: unless-stopped
+  mem_limit: 384m
+  healthcheck:
+    test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health/readiness"]
+    interval: 5s
+    timeout: 3s
+    retries: 10
+
+services:
+  kv-shard-0:
+    <<: *shard
+    environment:
+      KV_SHARD_ORDINAL: 0
+      KV_SHARD_COUNT: 3
+      KV_STORE_IMPLEMENTATION: chained
+
+  kv-shard-1:
+    <<: *shard
+    environment:
+      KV_SHARD_ORDINAL: 1
+      KV_SHARD_COUNT: 3
+      KV_STORE_IMPLEMENTATION: chained
+
+  kv-shard-2:
+    <<: *shard
+    environment:
+      KV_SHARD_ORDINAL: 2
+      KV_SHARD_COUNT: 3
+      KV_STORE_IMPLEMENTATION: chained
+
+  kv-router:
+    image: ${KV_ROUTER_IMAGE:-kv-router:1.0.0}
+    restart: unless-stopped
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health/readiness"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    ports:
+      - "${KV_ROUTER_PUBLISH:-8080}:8080"
+    environment:
+      KV_ROUTER_SHARD_COUNT: 3
+      KV_ROUTER_SHARD_URL_TEMPLATE: "http://kv-shard-{ordinal}:8080"
+    depends_on:
+      kv-shard-0:
+        condition: service_healthy
+      kv-shard-1:
+        condition: service_healthy
+      kv-shard-2:
+        condition: service_healthy
+
+  kv-ui:
+    image: ${KV_UI_IMAGE:-kv-ui:1.0.0}
+    restart: unless-stopped
+    mem_limit: 128m
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/index.html"]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+    ports:
+      - "${KV_UI_PUBLISH:-4200}:8080"
+    depends_on:
+      - kv-router
+    networks:
+      default:
+      web:
+        aliases:
+          - kv-app
+
+networks:
+  web:
+    external: true

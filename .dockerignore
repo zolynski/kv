@@ -1,0 +1,8 @@
+**/target/
+.git/
+.idea/
+ui/node_modules/
+ui/dist/
+docs/
+k8s/
+*.md

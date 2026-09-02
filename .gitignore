@@ -1,0 +1,11 @@
+target/
+/benchmarks/
+ui/node_modules/
+ui/dist/
+ui/.angular/
+.idea/
+*.iml
+.DS_Store
+.env
+leftovers/
+/docs/

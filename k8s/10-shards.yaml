@@ -1,0 +1,126 @@
+ # The stateful tier.
+#
+# A StatefulSet rather than a Deployment, for its identity guarantees rather than for storage:
+# pods are named kv-shard-0..N-1, that name is stable across restarts, and each is individually
+# addressable by DNS. The partitioning scheme is built on exactly those two properties. A
+# Deployment gives random pod names and only a load-balanced Service address, which makes
+# "send this key to shard 2" unexpressible.
+apiVersion: v1
+kind: Service
+metadata:
+  name: kv-shards
+  namespace: kv
+  labels:
+    app.kubernetes.io/name: kv-shard
+spec:
+  # Headless: no cluster IP, no load balancing. DNS resolves each pod individually as
+  # kv-shard-<ordinal>.kv-shards.kv.svc.cluster.local, which is what the router addresses.
+  # A load-balanced Service here would silently scatter every request across all shards.
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: kv-shard
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kv-shard
+  namespace: kv
+  labels:
+    app.kubernetes.io/name: kv-shard
+    app.kubernetes.io/part-of: kv-store
+spec:
+  serviceName: kv-shards
+  # This number and the router's KV_ROUTER_SHARD_COUNT must agree. They are the one genuine
+  # coupling in the system, which is why shards reject misdirected keys with 421 rather than
+  # storing them: a mismatch surfaces immediately instead of corrupting the keyspace.
+  replicas: 3
+  # Shards are independent - none waits on another - so there is no reason to start them one at
+  # a time. Parallel also means the cluster becomes fully available in one pod's startup time.
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kv-shard
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kv-shard
+        app.kubernetes.io/part-of: kv-store
+    spec:
+      # Paired with spring.lifecycle.timeout-per-shutdown-phase (15s) in the app's
+      # application.yaml: the drain budget must expire before the kubelet's SIGKILL, or graceful
+      # shutdown is a promise the platform does not keep.
+      terminationGracePeriodSeconds: 20
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+      containers:
+        - name: kv-shard
+          image: kv-shard:1.0.0
+          # These tags are never pushed anywhere, so a registry lookup could only fail. It does
+          # NOT mean the image is present: Docker Desktop's kind-based node does not share the
+          # host image store, so a local build yields ErrImageNeverPull until
+          # scripts/load-images.sh imports it.
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: KV_SHARD_COUNT
+              value: "3"
+            - name: KV_SHARD_ENFORCE_OWNERSHIP
+              value: "true"
+            - name: KV_STORE_IMPLEMENTATION
+              value: "chained"
+            # The store is the heap, so this is the capacity control. Sized against the memory
+            # limit below via the worst case a full store can reach: entries x max value size.
+            - name: KV_STORE_MAX_ENTRIES
+              value: "2000000"
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              # No CPU limit on purpose: throttling a JVM mid-GC causes latency spikes far worse
+              # than the noisy-neighbour problem a limit would solve. The request reserves a floor.
+              memory: 768Mi
+          startupProbe:
+            # Separated from liveness so liveness timings stay tight without tolerating JVM
+            # warm-up: 30 x 2s to boot, then liveness takes over on a much shorter leash.
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 2
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        # A read-only root filesystem still needs somewhere for the JVM to put its perf data.
+        - name: tmp
+          emptyDir: {}

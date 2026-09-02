@@ -1,0 +1,19 @@
+kv.zolynski.de {
+	encode zstd gzip
+
+	header {
+		Referrer-Policy "same-origin"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+
+	header X-Robots-Tag "noindex, nofollow"
+
+	handle /__deploy {
+		reverse_proxy host.docker.internal:9007
+	}
+
+	handle {
+		reverse_proxy kv-app:8080
+	}
+}

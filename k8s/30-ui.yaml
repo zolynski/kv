@@ -1,0 +1,77 @@
+# The Angular UI, served by nginx, which also proxies /api to the router so the browser only ever
+# talks to one origin. That is what keeps CORS out of the system entirely.
+apiVersion: v1
+kind: Service
+metadata:
+  name: kv-ui
+  namespace: kv
+  labels:
+    app.kubernetes.io/name: kv-ui
+spec:
+  # LoadBalancer is the right declaration for a real cluster: a cloud provider assigns an address.
+  #
+  # It does not work on Docker Desktop's kind-based provisioner (node "desktop-control-plane"),
+  # which ships no load-balancer controller and publishes only the API server port from the node
+  # container - so it stays <pending> and node ports are unreachable from the host. Verified, not
+  # assumed. Use scripts/demo.sh, which port-forwards.
+  #
+  # `allocateLoadBalancerNodePorts` defaults to true, so this Service already carries a node port;
+  # `kubectl get svc kv-ui` prints it, and `nodePort: 30080` on the port below pins it. A cluster
+  # with node ports but no load-balancer controller needs nothing else.
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: kv-ui
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kv-ui
+  namespace: kv
+  labels:
+    app.kubernetes.io/name: kv-ui
+    app.kubernetes.io/part-of: kv-store
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kv-ui
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kv-ui
+        app.kubernetes.io/part-of: kv-store
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101          # the nginx-unprivileged image's own user
+      containers:
+        - name: kv-ui
+          image: kv-ui:1.0.0
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8080
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /index.html
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /index.html
+              port: http
+            periodSeconds: 15
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]

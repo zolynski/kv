@@ -1,0 +1,107 @@
+<header class="masthead">
+  <div>
+    <h1>Key–Value Store</h1>
+    <p class="subtitle">
+      @if (topology(); as t) {
+        {{ t.shardCount }} shards · {{ t.totalEntries | number }} keys
+      } @else {
+        connecting…
+      }
+    </p>
+  </div>
+  @if (offline()) {
+    <span class="pill pill-bad">router unreachable</span>
+  } @else {
+    <span class="pill pill-good">connected</span>
+  }
+</header>
+
+<section class="panel">
+  <h2>Cluster</h2>
+  <div class="shards">
+    @for (shard of topology()?.shards ?? []; track shard.ordinal) {
+      <article class="shard" [class.shard-down]="!shard.reachable">
+        <div class="shard-head">
+          <span class="shard-name">shard {{ shard.ordinal }}</span>
+          @if (shard.reachable) {
+            <span class="pill pill-good">up</span>
+          } @else {
+            <span class="pill pill-bad">unreachable</span>
+          }
+        </div>
+
+        @if (shard.store; as store) {
+          <div class="metric">{{ store.entries | number }}</div>
+          <div class="metric-label">keys · {{ sharePercent(shard) | number: '1.0-1' }}% of cluster</div>
+
+          <!-- Load factor, not share of the cluster: this is the number that governs probe
+               length in the open-addressed table, so it is the one worth watching. -->
+          <div class="bar" [title]="'table load factor ' + (fillRatio(shard) | number: '1.2-2')">
+            <div class="bar-fill" [style.width.%]="fillRatio(shard) * 100"></div>
+          </div>
+          <dl class="facts">
+            <div><dt>implementation</dt><dd>{{ store.implementation }}</dd></div>
+            <div><dt>stripes</dt><dd>{{ store.segments }}</dd></div>
+            <div><dt>slots</dt><dd>{{ store.capacity | number }}</dd></div>
+            <div><dt>load factor</dt><dd>{{ fillRatio(shard) | number: '1.2-2' }}</dd></div>
+          </dl>
+        } @else {
+          <div class="metric metric-muted">—</div>
+          <div class="metric-label">no stats available</div>
+        }
+        <code class="shard-url">{{ shard.url }}</code>
+      </article>
+    } @empty {
+      <p class="muted">No shards reported.</p>
+    }
+  </div>
+</section>
+
+<div class="columns">
+  <section class="panel">
+    <h2>Entry</h2>
+    <label for="key">Key</label>
+    <input id="key" type="text" [ngModel]="keyInput()" (ngModelChange)="keyInput.set($event)" autocomplete="off" />
+
+    <label for="value">Value</label>
+    <textarea id="value" rows="4" [ngModel]="valueInput()" (ngModelChange)="valueInput.set($event)"></textarea>
+
+    <div class="actions">
+      <button type="button" class="primary" (click)="put()"
+              [disabled]="busy() || !keyInput()">Put</button>
+      <button type="button" (click)="get()" [disabled]="busy() || !keyInput()">Get</button>
+      <button type="button" class="danger" (click)="remove()" [disabled]="busy() || !keyInput()">Delete</button>
+    </div>
+
+    @if (outcome(); as result) {
+      <p class="outcome" [class.outcome-bad]="!result.ok">
+        {{ result.text }}
+        @if (result.shard !== null) {
+          <span class="badge">served by shard {{ result.shard }}</span>
+        }
+        <span class="muted">HTTP {{ result.status }}</span>
+      </p>
+    }
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Keys</h2>
+      <div class="actions actions-compact">
+        <button type="button" (click)="seed()" [disabled]="busy()">Add 300 entries</button>
+        <button type="button" class="danger" (click)="clearAll()" [disabled]="busy()">Clear all</button>
+      </div>
+    </div>
+
+    <div class="keys">
+      @for (entry of keys(); track entry.key) {
+        <button type="button" class="key-row" (click)="select(entry)">
+          <span class="shard-tag" [attr.data-shard]="entry.shard">{{ entry.shard }}</span>
+          <span class="key-name">{{ entry.key }}</span>
+        </button>
+      } @empty {
+        <p class="muted">The store is empty</p>
+      }
+    </div>
+  </section>
+</div>
