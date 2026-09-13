@@ -35,16 +35,21 @@ public class ConcurrentStripedLinkedListStore implements Store {
   /// Entry count, kept incrementally rather than by walking every chain.
   private final AtomicInteger entryCount = new AtomicInteger();
 
+  static {
+    // A bucket must never be reachable under two different locks: a writer mutates its chain head
+    // holding only its own key's stripe lock, so the bucket has to determine the stripe. That
+    // holds while STRIPE_COUNT divides the capacity, and resize only ever doubles it.
+    if (DEFAULT_CAPACITY % STRIPE_COUNT != 0) {
+      throw new IllegalStateException(
+              "STRIPE_COUNT " + STRIPE_COUNT + " must divide DEFAULT_CAPACITY " + DEFAULT_CAPACITY);
+    }
+  }
+
   public ConcurrentStripedLinkedListStore() {
     this(StoreConfig.unbounded());
   }
 
   public ConcurrentStripedLinkedListStore(StoreConfig config) {
-    // The lock-invariance argument in the class documentation depends on both of these.
-    if (Integer.bitCount(STRIPE_COUNT) != 1 || Integer.bitCount(DEFAULT_CAPACITY) != 1) {
-      throw new IllegalStateException(
-              "STRIPE_COUNT and DEFAULT_CAPACITY must be powers of two with capacity >= stripes");
-    }
     this.config = config;
     this.table = new Node[DEFAULT_CAPACITY];
     this.locks = new StampedLock[STRIPE_COUNT];
