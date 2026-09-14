@@ -3,7 +3,7 @@ package de.zolynski.kv.shard.config;
 import de.zolynski.kv.core.store.Store;
 import de.zolynski.kv.core.store.StoreConfig;
 import de.zolynski.kv.shard.store.ConcurrentHashMapStore;
-import de.zolynski.kv.shard.store.ConcurrentStripedLinkedListStore;
+import de.zolynski.kv.shard.store.StripedChainedStore;
 import de.zolynski.kv.shard.ShardIdentity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,7 +23,7 @@ public class StoreConfiguration {
   public Store store(StoreProperties properties) {
     StoreConfig config = new StoreConfig(properties.maxEntries());
     Store store = switch (properties.implementation()) {
-      case CHAINED -> new ConcurrentStripedLinkedListStore(config);
+      case CHAINED -> new StripedChainedStore(config);
       case CONCURRENT_HASH_MAP -> new ConcurrentHashMapStore(config);
     };
     log.info("store={} maxEntries={}",

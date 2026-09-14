@@ -3,7 +3,7 @@ package de.zolynski.kv.benchmarks;
 import de.zolynski.kv.core.store.Store;
 import de.zolynski.kv.core.store.StoreConfig;
 import de.zolynski.kv.shard.store.ConcurrentHashMapStore;
-import de.zolynski.kv.shard.store.ConcurrentStripedLinkedListStore;
+import de.zolynski.kv.shard.store.StripedChainedStore;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
@@ -49,7 +49,7 @@ public class StoreBenchmark {
     @Setup(Level.Trial)
     public void setUp() {
         store = switch (implementation) {
-            case "chained" -> new ConcurrentStripedLinkedListStore(StoreConfig.unbounded());
+            case "chained" -> new StripedChainedStore(StoreConfig.unbounded());
             case "concurrentHashMap" -> new ConcurrentHashMapStore(StoreConfig.unbounded());
             default -> throw new IllegalArgumentException(implementation);
         };

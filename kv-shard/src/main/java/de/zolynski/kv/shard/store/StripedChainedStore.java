@@ -19,7 +19,7 @@ import java.util.concurrent.locks.StampedLock;
 ///
 /// Readers take no lock: GET walks the chain optimistically and then validates its stamp,
 /// falling back to a real read lock only if a writer touched the stripe meanwhile.
-public class ConcurrentStripedLinkedListStore implements Store {
+public class StripedChainedStore implements Store {
 
   private static final int DEFAULT_CAPACITY = 64;
   private static final int STRIPE_COUNT = 64; // Number of distinct locks
@@ -45,11 +45,11 @@ public class ConcurrentStripedLinkedListStore implements Store {
     }
   }
 
-  public ConcurrentStripedLinkedListStore() {
+  public StripedChainedStore() {
     this(StoreConfig.unbounded());
   }
 
-  public ConcurrentStripedLinkedListStore(StoreConfig config) {
+  public StripedChainedStore(StoreConfig config) {
     this.config = config;
     this.table = new Node[DEFAULT_CAPACITY];
     this.locks = new StampedLock[STRIPE_COUNT];
@@ -230,7 +230,7 @@ public class ConcurrentStripedLinkedListStore implements Store {
   @Override
   public StoreStats stats() {
     return new StoreStats(
-            "ConcurrentStripedLinkedListStore", entryCount.get(),
+            "StripedChainedStore", entryCount.get(),
             config.maxEntries(), STRIPE_COUNT, table.length
     );
   }
